@@ -1,7 +1,7 @@
 A Simple Example Where re-Weighting Data is Not Monotone
 ================
 John Mount, Nina Zumel; <https://www.win-vector.com>
-Sat Oct 10 18:15:03 2020
+Wed Sep 4 09:30:07 2024
 
 ## Introduction
 
@@ -20,10 +20,10 @@ which lead us to conclude: if re-balancing does anything better than
 moving your threshold, this is in fact evidence of a missed interaction.
 
 It is our thesis that their is little benefit to re-balancing data and
-if there appears to be such a benefit it means you failded to use
-numeric scores (converted to a classification rule too early) or missed
-an interaction in your data (which can be fixed by a bit more feature
-engineering, the non-montone change suggests some interactions that can
+if there appears to be such a benefit it means you failed to use numeric
+scores (converted to a classification rule too early) or missed an
+interaction in your data (which can be fixed by a bit more feature
+engineering, the non-monotone change suggests some interactions that can
 be introduced).
 
 ## Example
@@ -35,6 +35,11 @@ note](https://github.com/WinVector/Examples/blob/main/rebalance/rw_invariant.md)
 ``` r
 # first attach packages
 library(ggplot2)
+```
+
+    ## Warning: package 'ggplot2' was built under R version 4.3.2
+
+``` r
 library(wrapr)
 library(WVPlots)
 ```
@@ -56,15 +61,15 @@ d <- wrapr::build_frame(
 knitr::kable(d)
 ```
 
-| x1 | x2 | y | w2 |
-| -: | -: | -: | -: |
-|  0 |  0 | 0 |  2 |
-|  0 |  0 | 0 |  2 |
-|  0 |  1 | 1 |  5 |
-|  1 |  0 | 0 |  2 |
-|  1 |  0 | 0 |  2 |
-|  1 |  0 | 1 |  5 |
-|  1 |  1 | 0 |  2 |
+|  x1 |  x2 |   y |  w2 |
+|----:|----:|----:|----:|
+|   0 |   0 |   0 |   2 |
+|   0 |   0 |   0 |   2 |
+|   0 |   1 |   1 |   5 |
+|   1 |   0 |   0 |   2 |
+|   1 |   0 |   0 |   2 |
+|   1 |   0 |   1 |   5 |
+|   1 |   1 |   0 |   2 |
 
 ### First Model
 
@@ -86,10 +91,6 @@ summary(model1)
     ## 
     ## Call:
     ## glm(formula = y ~ x1 + x2, family = binomial(), data = d)
-    ## 
-    ## Deviance Residuals: 
-    ##       1        2        3        4        5        6        7  
-    ## -0.7239  -0.7239   1.1117  -0.6294  -0.6294   1.8529  -1.1117  
     ## 
     ## Coefficients:
     ##             Estimate Std. Error z value Pr(>|z|)
@@ -115,15 +116,15 @@ d$pred1 <- predict(model1, newdata = d, type = 'response')
 knitr::kable(d)
 ```
 
-| x1 | x2 | y | w2 |     pred1 |
-| -: | -: | -: | -: | --------: |
-|  0 |  0 | 0 |  2 | 0.2304816 |
-|  0 |  0 | 0 |  2 | 0.2304816 |
-|  0 |  1 | 1 |  5 | 0.5390367 |
-|  1 |  0 | 0 |  2 | 0.1796789 |
-|  1 |  0 | 0 |  2 | 0.1796789 |
-|  1 |  0 | 1 |  5 | 0.1796789 |
-|  1 |  1 | 0 |  2 | 0.4609633 |
+|  x1 |  x2 |   y |  w2 |     pred1 |
+|----:|----:|----:|----:|----------:|
+|   0 |   0 |   0 |   2 | 0.2304816 |
+|   0 |   0 |   0 |   2 | 0.2304816 |
+|   0 |   1 |   1 |   5 | 0.5390367 |
+|   1 |   0 |   0 |   2 | 0.1796789 |
+|   1 |   0 |   0 |   2 | 0.1796789 |
+|   1 |   0 |   1 |   5 | 0.1796789 |
+|   1 |   1 |   0 |   2 | 0.4609633 |
 
 However, notice the was not a “balanced” problem or a problem with
 prevalence equal to 0.5.
@@ -163,10 +164,6 @@ summary(model2)
     ## Call:
     ## glm(formula = y ~ x1 + x2, family = binomial(), data = d, weights = w2)
     ## 
-    ## Deviance Residuals: 
-    ##      1       2       3       4       5       6       7  
-    ## -1.349  -1.349   1.860  -1.413  -1.413   3.056  -2.292  
-    ## 
     ## Coefficients:
     ##             Estimate Std. Error z value Pr(>|z|)
     ## (Intercept)  -0.5513     0.9209  -0.599    0.549
@@ -190,20 +187,20 @@ d$pred2 <- predict(model2, newdata = d, type = 'response')
 knitr::kable(d)
 ```
 
-| x1 | x2 | y | w2 |     pred1 |     pred2 |
-| -: | -: | -: | -: | --------: | --------: |
-|  0 |  0 | 0 |  2 | 0.2304816 | 0.3655679 |
-|  0 |  0 | 0 |  2 | 0.2304816 | 0.3655679 |
-|  0 |  1 | 1 |  5 | 0.5390367 | 0.7075457 |
-|  1 |  0 | 0 |  2 | 0.1796789 | 0.3930810 |
-|  1 |  0 | 0 |  2 | 0.1796789 | 0.3930810 |
-|  1 |  0 | 1 |  5 | 0.1796789 | 0.3930810 |
-|  1 |  1 | 0 |  2 | 0.4609633 | 0.7311357 |
+|  x1 |  x2 |   y |  w2 |     pred1 |     pred2 |
+|----:|----:|----:|----:|----------:|----------:|
+|   0 |   0 |   0 |   2 | 0.2304816 | 0.3655679 |
+|   0 |   0 |   0 |   2 | 0.2304816 | 0.3655679 |
+|   0 |   1 |   1 |   5 | 0.5390367 | 0.7075457 |
+|   1 |   0 |   0 |   2 | 0.1796789 | 0.3930810 |
+|   1 |   0 |   0 |   2 | 0.1796789 | 0.3930810 |
+|   1 |   0 |   1 |   5 | 0.1796789 | 0.3930810 |
+|   1 |   1 |   0 |   2 | 0.4609633 | 0.7311357 |
 
 ### The Difference
 
 Notice rows 1 and 2 are predicted to have larger probability (prediction
-\~ 0.23) in model1 than rows 4 and 5 (prediction \~ 0.18). This relation
+~ 0.23) in model1 than rows 4 and 5 (prediction ~ 0.18). This relation
 is reversed in model2. So the models have essentially different order,
 and therefore are not monotone transforms of each other.
 
@@ -255,9 +252,9 @@ PRPlot(
 
 An important property of logistic regression is [the balance
 properties](https://win-vector.com/2011/09/14/the-simpler-derivation-of-logistic-regression/):
-for any variable `v` we have `sum(d[[v]] * d$y) == sum(d[[v]] *
-d$prediction)`. Fitting with the balance priors (essentially the wrong
-priors loses this property).
+for any variable `v` we have
+`sum(d[[v]] * d$y) == sum(d[[v]] * d$prediction)`. Fitting with the
+balance priors (essentially the wrong priors loses this property).
 
 ``` r
 sum(d$x1 * d$y)
@@ -338,14 +335,14 @@ pairs
     ## [2,]
 
 Each entry of `pairs` is the edge-set of a graph where `pred1` and
-`pred2` orders disagree. We want new variables eliminate edges from
+`pred2` orders disagree. We want new variables to eliminate edges from
 these graphs.
 
-In our case the ordered supports of the components are `{({1,2},
-{4, 5, 6}), ({3}, {7})}`. Our idea is to introduce variables that
-identify these support sets, as this would give the model the degrees of
-freedom needed to re-score these sets independently and remove the
-compromises forcing the non-monotone change.
+In our case the ordered supports of the components are
+`{({1,2}, {4, 5, 6}), ({3}, {7})}`. Our idea is to introduce variables
+that identify these support sets, as this would give the model the
+degrees of freedom needed to re-score these sets independently and
+remove the compromises forcing the non-monotone change.
 
 ``` r
 d$s_456 <- d$x1 - d$x1 * d$x2
@@ -355,15 +352,15 @@ d$s_7 <- d$x1 * d$x2
 knitr::kable(d)
 ```
 
-| x1 | x2 | y | w2 |     pred1 |     pred2 | s\_456 | s\_12 | s\_3 | s\_7 |
-| -: | -: | -: | -: | --------: | --------: | -----: | ----: | ---: | ---: |
-|  0 |  0 | 0 |  2 | 0.2304816 | 0.3655679 |      0 |     1 |    0 |    0 |
-|  0 |  0 | 0 |  2 | 0.2304816 | 0.3655679 |      0 |     1 |    0 |    0 |
-|  0 |  1 | 1 |  5 | 0.5390367 | 0.7075457 |      0 |     0 |    1 |    0 |
-|  1 |  0 | 0 |  2 | 0.1796789 | 0.3930810 |      1 |     0 |    0 |    0 |
-|  1 |  0 | 0 |  2 | 0.1796789 | 0.3930810 |      1 |     0 |    0 |    0 |
-|  1 |  0 | 1 |  5 | 0.1796789 | 0.3930810 |      1 |     0 |    0 |    0 |
-|  1 |  1 | 0 |  2 | 0.4609633 | 0.7311357 |      0 |     0 |    0 |    1 |
+|  x1 |  x2 |   y |  w2 |     pred1 |     pred2 | s_456 | s_12 | s_3 | s_7 |
+|----:|----:|----:|----:|----------:|----------:|------:|-----:|----:|----:|
+|   0 |   0 |   0 |   2 | 0.2304816 | 0.3655679 |     0 |    1 |   0 |   0 |
+|   0 |   0 |   0 |   2 | 0.2304816 | 0.3655679 |     0 |    1 |   0 |   0 |
+|   0 |   1 |   1 |   5 | 0.5390367 | 0.7075457 |     0 |    0 |   1 |   0 |
+|   1 |   0 |   0 |   2 | 0.1796789 | 0.3930810 |     1 |    0 |   0 |   0 |
+|   1 |   0 |   0 |   2 | 0.1796789 | 0.3930810 |     1 |    0 |   0 |   0 |
+|   1 |   0 |   1 |   5 | 0.1796789 | 0.3930810 |     1 |    0 |   0 |   0 |
+|   1 |   1 |   0 |   2 | 0.4609633 | 0.7311357 |     0 |    0 |   0 |   1 |
 
 The idea is: we are working in the set-algebra of the indicator
 variables. Complement is subtraction from one, intersection is
@@ -394,7 +391,7 @@ d$pred1s <- predict(model1s, newdata = d, type = 'response')
 ```
 
     ## Warning in predict.lm(object, newdata, se.fit, scale = 1, type = if (type == :
-    ## prediction from a rank-deficient fit may be misleading
+    ## prediction from rank-deficient fit; attr(*, "non-estim") has doubtful cases
 
 ``` r
 d$pred1s
@@ -402,6 +399,9 @@ d$pred1s
 
     ## [1] 1.170226e-09 1.170226e-09 1.000000e+00 3.333333e-01 3.333333e-01
     ## [6] 3.333333e-01 1.170226e-09
+    ## attr(,"non-estim")
+    ## 1 2 3 7 
+    ## 1 2 3 7
 
 ``` r
 model2s <- glm(
@@ -423,7 +423,7 @@ d$pred2s <- predict(model2s, newdata = d, type = 'response')
 ```
 
     ## Warning in predict.lm(object, newdata, se.fit, scale = 1, type = if (type == :
-    ## prediction from a rank-deficient fit may be misleading
+    ## prediction from rank-deficient fit; attr(*, "non-estim") has doubtful cases
 
 ``` r
 d$pred2s
@@ -431,6 +431,9 @@ d$pred2s
 
     ## [1] 2.272475e-09 2.272475e-09 1.000000e+00 5.555556e-01 5.555556e-01
     ## [6] 5.555556e-01 2.272475e-09
+    ## attr(,"non-estim")
+    ## 1 2 3 7 
+    ## 1 2 3 7
 
 ``` r
 list(
@@ -480,7 +483,7 @@ model1c$coefficients
 ```
 
     ##   (Intercept)        cat0 1        cat1 0        cat1 1 
-    ## -2.056607e+01  4.113214e+01  1.987292e+01 -5.786086e-11
+    ## -2.056607e+01  4.113214e+01  1.987292e+01 -7.232608e-12
 
 ``` r
 d$pred1c <- predict(model1c, newdata = d, type = 'response')
@@ -501,7 +504,7 @@ model2c$coefficients
 ```
 
     ##   (Intercept)        cat0 1        cat1 0        cat1 1 
-    ## -1.990240e+01  4.043890e+01  2.012554e+01 -1.077021e-08
+    ## -1.990240e+01  4.043890e+01  2.012554e+01 -7.521041e-09
 
 ``` r
 d$pred2c <- predict(model2c, newdata = d, type = 'response')
@@ -579,7 +582,6 @@ the space of all such functions
 A classification model homotopy bundle is a map ’h: X \* \[0, 1\] -\>
 \[0, 1\]\` or a map from the cross-product of the space of explanatory
 variables and posited prevelance to probability estimates.
-
 </blockquote>
 
 So in principle a homotopy model bundle is an infinite family of models,
@@ -659,7 +661,7 @@ evalsp$logit_prevalence <- logit(evalsp$apparent_prevalence)
 
 ggplot(data = evalsp, mapping = aes(x = logit_prevalence, y = prediction, color = row_set)) +
   geom_line() +
-  ggtitle("trajectory of row-set predictions as a function of truth prevalence") +
+  ggtitle("trajectory of row-set predictions as a function of logit truth prevalence") +
   scale_color_brewer(palette = "Dark2")
 ```
 
@@ -668,7 +670,7 @@ ggplot(data = evalsp, mapping = aes(x = logit_prevalence, y = prediction, color 
 ``` r
 ggplot(data = evalsp, mapping = aes(x = logit_prevalence, y = link, color = row_set)) +
   geom_line() +
-  ggtitle("trajectory of row-set link as a function of truth prevalence") +
+  ggtitle("trajectory of row-set link as a function of logit truth prevalence") +
   scale_color_brewer(palette = "Dark2")
 ```
 
@@ -727,10 +729,19 @@ ggplot(data = evalsc, mapping = aes(x = apparent_prevalence, y = sigmoid_coef_va
 ![](rw_example_R_files/figure-gfm/unnamed-chunk-34-7.png)<!-- -->
 
 ``` r
+ggplot(data = evalsc, mapping = aes(x = apparent_prevalence, y = sigmoid_coef_value, color = coef_name)) +
+  geom_line() +
+  ggtitle("trajectory of sigmoid of coefficients as a function of truth prevalence") +
+  scale_color_brewer(palette = "Dark2")
+```
+
+![](rw_example_R_files/figure-gfm/unnamed-chunk-34-8.png)<!-- -->
+
+``` r
 ggplot(data = evalsc, mapping = aes(x = logit_prevalence, y = sigmoid_coef_value, color = coef_name)) +
   geom_line() +
   ggtitle("trajectory of sigmoid of coefficients as a function of logit truth prevalence") +
   scale_color_brewer(palette = "Dark2")
 ```
 
-![](rw_example_R_files/figure-gfm/unnamed-chunk-34-8.png)<!-- -->
+![](rw_example_R_files/figure-gfm/unnamed-chunk-34-9.png)<!-- -->

@@ -1,0 +1,327 @@
+build versioned db
+================
+2024-09-19
+
+An example of building the versioned database for [Please Version
+Data](https://win-vector.com/2024/09/09/please-version-data/), [Please
+Version Data
+(source)](https://github.com/WinVector/Examples/blob/main/versioning_data/Please_Version_Data.md),
+and [show versioned
+data](https://github.com/WinVector/Examples/blob/main/versioning_data/show_versioned_data.md).
+
+``` r
+library(DBI)
+# library(RSQLite)
+source("pull_data_by_use.R")
+```
+
+``` r
+con <- dbConnect(RSQLite::SQLite(), "movie_data.sqlite")
+```
+
+Read initial data, normalize column names, and assign `_fi` and `_usi`.
+
+``` r
+# read our first data
+d_before_August_orig <- read.csv(
+  'Roxie_schedule_as_known_before_August.csv', 
+  strip.white = TRUE, 
+  stringsAsFactors = FALSE)
+d_before_August_orig$Attendance <- d_before_August_orig$EstimatedAttendance
+d_before_August_orig$EstimatedAttendance <- NULL
+d_before_August <- d_before_August_orig
+# d_before_August$Date <- as.Date(d_before_August$Date)
+orig_cols <- colnames(d_before_August_orig)
+d_before_August$`_fi` <- 87776 + 1:nrow(d_before_August)
+d_before_August$`_usi` <- 1337
+domain_primary_keys = c('Date', 'Movie', 'Time')
+d_before_August <- d_before_August[, c('_fi', '_usi', orig_cols), drop = FALSE]
+stopifnot(sum(duplicated(d_before_August[, domain_primary_keys])) == 0)
+```
+
+Create first versions of all tables.
+
+``` r
+# start transaction
+dbBegin(con)
+```
+
+``` r
+update_log <- data.frame(
+  `_usi` = c(1212, 1337),
+  `_update_time` = c('2024-06-12 18:45:15Z', '2024-08-02 23:45:15Z'),
+  note = c('mal-formatted records removed', 'after July 2024 data refresh'),
+  as_of_date = c('2024-05-31', '2024-07-31'),
+  check.names = FALSE
+)
+dbWriteTable(con, 'update_log', update_log, overwrite=TRUE)
+
+dbGetQuery(con, "SELECT * from update_log") |>
+  knitr::kable()
+```
+
+| \_usi | \_update_time        | note                          | as_of_date |
+|------:|:---------------------|:------------------------------|:-----------|
+|  1212 | 2024-06-12 18:45:15Z | mal-formatted records removed | 2024-05-31 |
+|  1337 | 2024-08-02 23:45:15Z | after July 2024 data refresh  | 2024-07-31 |
+
+``` r
+dbWriteTable(con, 'd_data_log', d_before_August, overwrite=TRUE)
+
+dbGetQuery(con, "SELECT * from d_data_log") |>
+  head() |>
+  knitr::kable()
+```
+
+|  \_fi | \_usi | Date       | Movie                                                | Time    | Attendance |
+|------:|------:|:-----------|:-----------------------------------------------------|:--------|-----------:|
+| 87777 |  1337 | 2024-08-01 | Chronicles of a Wandering Saint                      | 6:40 pm |         47 |
+| 87778 |  1337 | 2024-08-01 | Eno                                                  | 6:40 pm |        233 |
+| 87779 |  1337 | 2024-08-01 | Longlegs                                             | 8:35 pm |        233 |
+| 87780 |  1337 | 2024-08-01 | Staff Pick: Melvin and Howard (35mm)                 | 8:45 pm |         47 |
+| 87781 |  1337 | 2024-08-02 | Made in England: The Films of Powell and Pressburger | 6:00 pm |        233 |
+| 87782 |  1337 | 2024-08-02 | Lyd                                                  | 6:30 pm |        233 |
+
+``` r
+d_row_deletions <- data.frame(
+  `_usi` = c(1212, 1212),
+  `_fi` = c(3312, 3313),
+  check.names = FALSE
+)
+dbWriteTable(con, 'd_row_deletions', d_row_deletions, overwrite=TRUE)
+
+dbGetQuery(con, "SELECT * from d_row_deletions")|>
+  knitr::kable()
+```
+
+| \_usi | \_fi |
+|------:|-----:|
+|  1212 | 3312 |
+|  1212 | 3313 |
+
+``` r
+# commit transaction
+dbCommit(con)
+```
+
+Now the bi-temporal database is up. We can then try to update it based
+on a new data pull from our simulated movie data vendor. Much better
+would be for the vendor to share access to an already organized
+bi-temporal database.
+
+To update the data we need to determine what rows to insert, update, and
+delete (all domain-specific changes) and assign a `_usi` for the whole
+transaction and new `_fi` for any new rows.
+
+``` r
+# start transaction
+dbBegin(con)
+```
+
+``` r
+# confirm we have right _usi
+max_usi <- max(
+  dbGetQuery(con, "SELECT MAX(_usi) AS _usi FROM update_log")[1, 1],
+  dbGetQuery(con, "SELECT MAX(_usi) AS _usi FROM d_row_deletions")[1, 1],
+  dbGetQuery(con, "SELECT MAX(_usi) AS _usi FROM d_data_log")[1, 1])
+if (max_usi != 1337) {
+  # abort
+  dbRollback(con)
+  stopifnot(FALSE)
+}
+next_usi = max_usi + 1
+```
+
+``` r
+# get current view to compute deltas relative to
+d_before_August <- pull_data_by_usi(con, max_usi, return_intenal_keys = TRUE)
+```
+
+``` r
+# read next glob of data
+d_after_August_orig <- read.csv(
+  'Roxie_schedule_as_known_after_August.csv', 
+  strip.white = TRUE, 
+  stringsAsFactors = FALSE)
+d_after_August <- d_after_August_orig
+# d_after_August$Date <- as.Date(d_after_August$Date)
+d_after_August$`_usi` <- next_usi
+d_after_merged <- merge(
+  d_after_August, 
+  d_before_August[ , c('_fi', domain_primary_keys)], 
+  by = domain_primary_keys,
+  all.x = TRUE,
+  all.y = TRUE)
+# TODO: new ID, and deleted ID cases, and no change in data cases
+d_after_August <- d_after_merged[, c('_fi', '_usi', orig_cols), drop = FALSE]
+stopifnot(sum(duplicated(d_after_August[, domain_primary_keys])) == 0)
+```
+
+``` r
+# work new rows
+new_rows <- which(is.na(d_after_August$`_fi`))
+if(length(new_rows) > 0) {
+  # get next available _fi
+  next_fi <- 1 + max(
+    dbGetQuery(con, "SELECT MAX(_fi) AS _fi FROM d_row_deletions")[1, 1],
+    dbGetQuery(con, "SELECT MAX(_fi) AS _fi FROM d_data_log")[1, 1])
+  for (i in new_rows) {
+    d_after_August$`_fi`[i] = next_fi
+    next_fi = next_fi + 1
+  }
+}
+```
+
+``` r
+# work deleted rows
+deleted_fi <- d_after_August[is.na(d_after_August$`_usi`), '_fi', drop = TRUE]
+d_after_August <- d_after_August[is.na(d_after_August$`_usi`) == FALSE, , drop = FALSE]
+```
+
+``` r
+# suppress unchanged rows
+
+d_dup_check <- merge(
+  d_after_August[ , c('_fi', orig_cols)], 
+  d_before_August[ , c('_fi', orig_cols)], 
+  by = '_fi',
+  all.x = FALSE,
+  all.y = FALSE)
+stopifnot(length(unique(d_dup_check$`_fi`)) == nrow(d_dup_check))
+is_dup = rep(TRUE, nrow(d_dup_check))
+for(col in orig_cols) {
+  is_dup = is_dup & (d_dup_check[ , paste0(col, '.x')] == d_dup_check[ , paste0(col, '.y')])
+}
+dup_ids <- d_dup_check$`_fi`[is_dup]
+d_after_August <- d_after_August[!(d_after_August$`_fi` %in% dup_ids), , drop = FALSE]
+```
+
+We now have the new rows we want to insert, and deletions, and are not
+updating rows that did not change.
+
+``` r
+if (nrow(d_after_August) > 0) {
+  dbWriteTable(con, 'd_data_log', d_after_August, append=TRUE)
+}
+```
+
+``` r
+if(length(deleted_fi) > 0) {
+  d_row_deletions <- data.frame(
+    `_usi` = next_usi,
+    `_fi` = deleted_fi,
+    check.names = FALSE
+  )
+  dbWriteTable(con, 'd_row_deletions', d_row_deletions, append=TRUE)
+}
+```
+
+``` r
+update_log <- data.frame(
+  `_usi` = c(next_usi),
+  `_update_time` = c('2024-09-03 22:12:00Z'),
+  note = c('after August 2024 data refresh'),
+  as_of_date = c('2024-08-31'),
+  check.names = FALSE
+)
+dbWriteTable(con, 'update_log', update_log, append=TRUE)
+```
+
+``` r
+# commit transaction
+dbCommit(con)
+```
+
+Display our record tables.
+
+``` r
+dbGetQuery(con, "SELECT * from update_log") |>
+  knitr::kable()
+```
+
+| \_usi | \_update_time        | note                           | as_of_date |
+|------:|:---------------------|:-------------------------------|:-----------|
+|  1212 | 2024-06-12 18:45:15Z | mal-formatted records removed  | 2024-05-31 |
+|  1337 | 2024-08-02 23:45:15Z | after July 2024 data refresh   | 2024-07-31 |
+|  1338 | 2024-09-03 22:12:00Z | after August 2024 data refresh | 2024-08-31 |
+
+``` r
+dbGetQuery(con, "SELECT * from d_row_deletions")  |>
+  knitr::kable()
+```
+
+| \_usi | \_fi |
+|------:|-----:|
+|  1212 | 3312 |
+|  1212 | 3313 |
+
+Display our views.
+
+``` r
+d_before_August_view <- pull_data_by_usi(con, 1337)
+```
+
+``` r
+d_before_August_view |>
+  head() |>
+  knitr::kable()
+```
+
+| Date       | Movie                                                | Time    | Attendance |
+|:-----------|:-----------------------------------------------------|:--------|-----------:|
+| 2024-08-01 | Chronicles of a Wandering Saint                      | 6:40 pm |         47 |
+| 2024-08-01 | Eno                                                  | 6:40 pm |        233 |
+| 2024-08-01 | Longlegs                                             | 8:35 pm |        233 |
+| 2024-08-01 | Staff Pick: Melvin and Howard (35mm)                 | 8:45 pm |         47 |
+| 2024-08-02 | Made in England: The Films of Powell and Pressburger | 6:00 pm |        233 |
+| 2024-08-02 | Lyd                                                  | 6:30 pm |        233 |
+
+``` r
+d_after_August_view <- pull_data_by_usi(con, 1338)
+```
+
+``` r
+d_after_August_view |>
+  head() |>
+  knitr::kable()
+```
+
+| Date       | Movie                                                | Time    | Attendance |
+|:-----------|:-----------------------------------------------------|:--------|-----------:|
+| 2024-08-01 | Chronicles of a Wandering Saint                      | 6:40 pm |          6 |
+| 2024-08-01 | Eno                                                  | 6:40 pm |         10 |
+| 2024-08-01 | Longlegs                                             | 8:35 pm |        114 |
+| 2024-08-01 | Staff Pick: Melvin and Howard (35mm)                 | 8:45 pm |         23 |
+| 2024-08-02 | Made in England: The Films of Powell and Pressburger | 6:00 pm |        204 |
+| 2024-08-02 | Lyd                                                  | 6:30 pm |        213 |
+
+``` r
+dbDisconnect(con)
+```
+
+Confirm the views reproduce the original data.
+
+``` r
+# confirm equivalent
+equivalent_data_frames <- function(a, b) {
+  if(!(all(dim(a) == dim(b)))) {
+    return(FALSE)
+  }
+  cols <- sort(colnames(a))
+  if(!all(cols == sort(colnames(b)))) {
+    return(FALSE)
+  }
+  rownames(a) <- NULL
+  rownames(b) <- NULL
+  a <- a[do.call(order, a), , drop = FALSE]
+  b <- b[do.call(order, b), , drop = FALSE]
+  rownames(a) <- NULL
+  rownames(b) <- NULL
+  return(all(a==b))
+}
+```
+
+``` r
+stopifnot(equivalent_data_frames(d_before_August_orig, d_before_August_view))
+stopifnot(equivalent_data_frames(d_after_August_orig, d_after_August_view))
+```

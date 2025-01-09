@@ -34,12 +34,6 @@ First we attach our packages and define our first example function.
 
 ``` r
 library(ggplot2)
-```
-
-    ## Warning: replacing previous import 'vctrs::data_frame' by 'tibble::data_frame'
-    ## when loading 'dplyr'
-
-``` r
 library(wrapr)
 library(WVPlots)
 ```
@@ -319,15 +313,8 @@ will limit ourselves to a \> b \>= 1.
 In this case we have the following strong claim.
 
 <pre>
-The ROC plot curve is: 
-
-   y = 1 - (1 - x^(1/s))^s
-   
-where s is:
-
-  s = log(1 - I(1/2; b, a)) / log(0.5)
-  
-where I(t; a, b) is the normalized incomplete beta function.
+The ROC plot curve is close to: 
+&#10;   y = 1 - (1 - x^(1/s))^s
 </pre>
 
 Let’s try that. First we try an arbitrary curve meeting our mirror
@@ -439,35 +426,25 @@ y(t) = 1 - I(t; a, b)
 This is already enough to show mirror symmetry around the line between
 (0,1) and (1,0) as that reflection carries (x,y) to (1-y, 1-x).
 
-For a=1 then the AUC curve is then:
+For b=1 then the AUC curve is then:
 
 <pre>
-x(t) = (1 - t)^b
-y(t) = 1 - t^b
+x(t) = 1 - t^a
+y(t) = (1 - t)^a
 </pre>
 
 We eliminate the classifier threshold t, to get a non-parameterized
 version of this curve:
 
 <pre>
-(1 - y)^(1/b) + x^(1/b) = 1 
+(1 - x)^(1/a) + y^(1/a) = 1
 </pre>
 
-This *is* the curve for the a=1 case. The claimed s is just given by
-solving for a curve with shape parameters (a,b) for what value is of s
-to we have the following two expression equal as shown below.
+This *is* the curve for the b=1 case.
 
-<pre>
-(1 - 0.5)^s  == 1 - I(t; a, b)
-</pre>
-
-The expressions are just saying where each curve places its x-value on
-the line joining (0,1) to (1,0). Solving we get s = log(1 - I(1/2; b,
-a)) / log(0.5).
-
-So we have proven everything in the a=1 special case. All that remains
-would be to show this generalizes for arbitrary a\>=1 (which we will not
-do here).
+So we have proven everything in the b=1 special case. All that remains
+would be to show this generalizes or not for arbitrary b\>1 (which we
+will not do here).
 
 ## Conclusion
 
@@ -476,7 +453,7 @@ examples here) that the ROC plots produced from mirror-symmetric
 conditional beta distributions are (ideally) all graphs of the form:
 
 <pre>
-   (1 - y)^(1/s) + x^(1/s) = 1 
+   (1 - y)^(1/s) + x^(1/s) = 1
 </pre>
 
 for s\>=1.
@@ -484,13 +461,13 @@ for s\>=1.
 Or (in terms of the quantities being studied instead of the graph):
 
 <pre>
-   (1 - sensitivity)^s + (1 - specificity)^s = 1 
+   (1 - sensitivity)^(1/s) + (1 - specificity)^(1/s) = 1
 </pre>
 
 This single parameter family of curves are all symmetric, convex, and
 comparable (for any pair one is contained in the other)- which are
 *very* nice properties not generally true of the ROC plot. It is our
-further, unproven, claim that you expect this shape in sufficiently rich
+further, unproven, claim that you expect this shape is sufficiently rich
 (enough variables, powerful enough models, and enough examples) modeling
 situations. As the mirrored conditional beta family is nominally
 parameterized by two parameters, the fact that the non-parameterized

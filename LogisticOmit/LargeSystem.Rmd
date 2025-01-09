@@ -1,0 +1,390 @@
+---
+title: "Larger System"
+output: github_document
+date: "2023-09-03"
+always_allow_html: true
+---
+
+## Introduction
+
+We will work on a slightly larger version of ["Solving for Hidden Data"](https://win-vector.com/2023/09/02/solving-for-hidden-data/). We will also show the maximum entropy method recovers the original unobserved data distribution in general.
+
+## The Example 
+
+We define our detailed names frame frame.
+
+```{r, echo = FALSE}
+# show row labels
+x1_levels = c('0', '1', '2')
+x2_levels = c('0', '1', '2')
+y_levels = c(FALSE, TRUE)
+detailed_names <- expand.grid(
+  x1 = x1_levels, 
+  x2 = x2_levels, 
+  y = y_levels,
+  stringsAsFactors = FALSE)
+detailed_names <- detailed_names[
+  order(detailed_names$y, 
+        detailed_names$x2, 
+        detailed_names$x1),
+  , 
+  drop = FALSE]
+```
+
+We specify our (to be inferred) explanatory variable probabilities.
+
+```{r}
+# specify explanatory variable distribution 
+`P(X1=1)` <- 0.3
+`P(X1=2)` <- 0.2
+`P(X2=1)` <- 0.8
+`P(X2=2)` <- 0.05
+`P(X1=0)` <- 1 - (`P(X1=1)` + `P(X1=2)`)
+`P(X2=0)` <- 1 - (`P(X2=1)` + `P(X2=2)`)
+```
+
+Define our conditional probability of outcome given explanatory variables. 
+
+```{r}
+c0 = 0.5
+b1 = 3.2
+b2 = -1.1
+```
+
+We build up a data frame with row distribution defined as above.
+
+```{r}
+# assign an example outcome or dependent variable
+detailed_frame <- detailed_names
+detailed_frame$x1 <- as.numeric(detailed_frame$x1)
+detailed_frame$x2 <- as.numeric(detailed_frame$x2)
+
+# get joint distribution of explanatory variables
+detailed_frame["P(X1=x1, X2=x2)"] <- (
+  ifelse(detailed_frame$x1 == 0, `P(X1=0)`, 
+         ifelse(detailed_frame$x1 == 1, `P(X1=1)`, `P(X1=2)`))
+  * ifelse(detailed_frame$x2 == 0, `P(X2=0)`,
+           ifelse(detailed_frame$x1 == 1, `P(X2=1)`, `P(X2=2)`)))
+
+# converting "links" to probabilities
+sigmoid <- function(x) {1 / (1 + exp(-x))}
+
+# get conditional probability of observed outcome
+# could also consider categorical x1, x2 here
+y_probability <- sigmoid(
+  c0 + b1 * detailed_frame$x1 + b2 * detailed_frame$x2)
+
+# record probability of observation
+detailed_frame[["P(Y=y | X1=x1, X2=x2)"]] <- ifelse(
+  detailed_frame$y, 
+  y_probability, 
+  1 - y_probability)
+
+# compute joint explanatory plus outcome probability of each row
+detailed_frame[["P(X1=x1, X2=x2, Y=y)"]] <- (
+  detailed_frame[["P(X1=x1, X2=x2)"]] 
+  * detailed_frame[["P(Y=y | X1=x1, X2=x2)"]])
+```
+
+
+```{r}
+knitr::kable(detailed_frame)
+```
+
+## The unobserved to observed mapping
+
+We show the linear operator that maps detailed probabilities to summarized observed probabilities (where each view marginalizes out one variable).
+
+```{r, echo = FALSE}
+# build transfer matrix from joint observations to marginal observations
+asterisk_symbol <- "&ast;"
+margin_names <- rbind(
+  expand.grid(
+    x1 = x1_levels, 
+    x2 = asterisk_symbol, 
+    y = y_levels, 
+    stringsAsFactors = FALSE),
+  expand.grid(
+    x1 = asterisk_symbol, 
+    x2 = x2_levels, 
+    y = y_levels, 
+    stringsAsFactors = FALSE),
+  expand.grid(
+    x1 = x1_levels, 
+    x2 = x2_levels, 
+    y = asterisk_symbol, 
+    stringsAsFactors = FALSE)
+)
+margin_transform <- matrix(
+  data=0, 
+  nrow = nrow(margin_names), 
+  ncol = nrow(detailed_names))
+colnames(margin_transform) <- paste0(
+  "P(X1=",
+  detailed_names$x1,
+  ", X2=",
+  detailed_names$x2,
+  ", Y=",
+  detailed_names$y,
+  ")")
+rownames(margin_transform) <- paste0(
+  "P(X1=",
+  margin_names$x1,
+  ", X2=",
+  margin_names$x2,
+  ", Y=",
+  margin_names$y,
+  ")")
+for (row_index in seq(nrow(margin_transform))) {
+  for (col_index in seq(ncol(margin_transform))) {
+    if (sum(detailed_names[col_index, ] == margin_names[row_index, ]) == 2) {
+      margin_transform[row_index, col_index] = 1
+    }
+  }
+}
+```
+
+```{r}
+knitr::kable(margin_transform, format = "html") |>
+  kableExtra::kable_styling(font_size = 8)
+```
+
+```{r}
+margins <- 
+   margin_transform %*% detailed_frame[["P(X1=x1, X2=x2, Y=y)"]]
+```
+
+## Reversing the mapping as a solution step
+
+Combining observations to estimate `margins` was solved in our earlier note. Let's compute a linear pre-image of the marginalization on our way to estimate the original data distribution.
+
+```{r}
+(pre_image <- solve(
+  qr(margin_transform, LAPACK = TRUE), 
+  margins))
+```
+
+Notice this does not obey sign constraints. We will use our degrees of freedom in the pre-image process to both establish non-negativity (moving to valid likelihoods/probabilities/frequencies) and maximize entropy (under the assumption the actual solution is itself maximal entropy).
+
+## Fixing the linear solution
+
+The the degrees of freedom in the pre-image process are given as follows.
+
+```{r}
+(ns <- MASS::Null(t(margin_transform)))
+```
+
+The above null vectors include the [Kronecker product](https://en.wikipedia.org/wiki/Kronecker_product) of the per-variable null spaces. Each of the per-variable null spaces are just a basis for the orthogonal complement of an all ones vector of length equal to the number of values the variable takes. 
+
+We can establish that these are *all* of the null-vectors by showing the number of these independent vectors match the rank of the null space. In ["Solving for Hidden Data"](https://win-vector.com/2023/09/02/solving-for-hidden-data/) the null space is rank 1, and here it is rank 4. In both of these cases this means the Kronecker product vectors are the entire null space. It turns out this is enough to allow us to confirm the following recovery procedure can find the original data set.
+
+Define our "pick a good solution" objective function.
+
+```{r}
+entropy <- function(v) {
+  v <- v[v > 0]
+  if (length(v) < 2) {
+    return(0)
+  }
+  v <- v / sum(v)
+  -sum(v * log2(v))
+}
+```
+
+To solve: maximize `entropy(pre_image + ns * z)` subject to `pre_image + ns * z >= 0`.
+
+```{r}
+library(lpSolve)
+```
+
+Get an interior starting solution for the later optimizer.
+
+```{r}
+# solve for possible interior solution by maximizing slack
+# this call takes only non-negative variables, so we double
+# the variables to simulate signed variables.
+soln0 <- lp(
+  direction = "max",
+  objective.in = c(rep(0, ncol(ns) * 2), 1),
+  const.mat = cbind(ns, -ns, -1),
+  const.dir = rep(">=", nrow(ns)),
+  const.rhs = -pre_image,
+)
+z0 <- soln0$solution[1:ncol(ns)] - soln0$solution[(1+ncol(ns)):(2*ncol(ns))]
+
+z0
+```
+
+```{r}
+recovered0 <- ns %*% z0 + pre_image
+stopifnot(
+  all(recovered0 > 0)
+)
+stopifnot(
+  max(abs(margins - margin_transform %*% recovered0)) < 1e-6
+)
+
+recovered0
+```
+
+```{r}
+entropy(recovered0)
+```
+
+We then finish by solving the following constrained optimization problem.
+
+```{r}
+# maximize entropy in constrained region
+f <- function(z) {-entropy(ns %*% z + pre_image)}
+g <- function(z) {
+  as.numeric(t((log(ns %*% z + pre_image) + 1) / log(2))  %*% ns)
+}
+soln1 <- constrOptim(
+  theta = z0,
+  f = f,
+  grad = g,
+  ui = ns,
+  ci = -pre_image,
+  outer.iterations = 1000,
+  outer.eps = 1e-10,
+  method = "CG"
+)
+z1 <- soln1$par
+
+z1
+```
+
+```{r}
+stopifnot(
+  max(abs(g(z1))) < 1e-5
+)
+```
+
+
+```{r}
+recovered1 <- ns %*% z1 + pre_image
+stopifnot(
+  all(recovered1 >= 0)
+)
+stopifnot(
+  max(abs(margins - margin_transform %*% recovered1)) < 1e-6
+)
+
+recovered1
+```
+
+```{r}
+entropy(recovered1)
+```
+
+```{r}
+stopifnot(
+  entropy(recovered1) >= entropy(recovered0)
+)
+```
+
+This recovered entropy should be at least as high as the unobserved actual solution (modulo optimization early stopping and numeric issues). If they are equal they are the same solution.
+
+
+
+```{r}
+entropy(detailed_frame[["P(X1=x1, X2=x2, Y=y)"]])
+```
+
+```{r}
+stopifnot(
+  entropy(recovered1) - entropy(detailed_frame[["P(X1=x1, X2=x2, Y=y)"]]) > -1e-8
+)
+```
+
+We show this solution is very close to the original (unobserved) distribution. I.e.: we have solved the problem.
+
+```{r}
+(residuals <- 
+  detailed_frame[["P(X1=x1, X2=x2, Y=y)"]] - recovered1)
+```
+
+```{r}
+stopifnot(
+  max(abs(residuals)) < 1e-8
+)
+```
+
+What we want to show is that the distribution given is highest entropy with respect to the variations of the specified adjustment vectors. If this is the case, then we *always* recover the actual pre-image distribution through these methods.
+
+## The Kronecker product null vectors are orthogonal to the log probabilities
+
+The Kronecker product null vectors are orthogonal to the log probabilities of the original data set. Once we know this we know the solution method recovers the original data, as it picks a unique optimum with the same the above as zero-gradient conditions.
+
+To show this we just expand one such sum as follows. Write our Kronecker product null vector as `v<sub>x1, x2, y</sub> = f1(x1) * f2(x2) * (-1)<sup>y</sup>`, where `fi(<sup>xi</sup>)` is orthogonal to the all ones vector for the appropiate sums and sub-sums.
+
+<pre>
+sum<sub>x1</sub> sum<sub>x2</sub> sum<sub>y=F,T</sub> (
+   f1(x1) * f2(x2) * (-1)<sup>y</sup> 
+     * log(P(X1=x1, X2=x2, Y))
+   )
+   
+ = sum<sub>x1</sub> sum<sub>x2</sub> sum<sub>y=F,T</sub> (
+     f1(x1) * f2(x2) * (-1)<sup>y</sup> 
+       * log(P(X1=x1, X2=x2) * p(Y=y | x1, x2))
+     )
+
+ = sum<sub>x1</sub> sum<sub>x2</sub> (
+    f1(x1) * f2(x2) * ( 
+       log(P(X1=x1, X2=x2) * 
+          (1 - 1 / (1 + exp(c0 + g1(b1, x1) + g2(b2, x2)))))
+      - log(P(X1=x1, X2=x2) * 
+          1 / (1 + exp(c0 + g1(b1, x1) + g2(b2, x2))))
+    ))
+    
+ = sum<sub>x1</sub> sum<sub>x2</sub> (
+    f1(x1) * f2(x2) * ( 
+        log(P(X1=x1, X2=x2) * 
+           (exp(c0 + g1(b1, x1) + g2(b2, x2)) / (1 + exp(c0 + g1(b1, x1) + g2(b2, x2)))))
+      - log(P(X1=x1, X2=x2) * 
+           1 / (1 + exp(c0 + g1(b1, x1) + g2(b2, x2))))
+    ))
+
+ = sum<sub>x1</sub> sum<sub>x2</sub> (
+    f1(x1) * f2(x2) * log(exp(c0 + g1(b1, x1) + g2(b2, x2))))
+
+ = sum<sub>x1</sub> sum<sub>x2</sub> (
+    f1(x1) * f2(x2) * (c0 + g1(b1, x1) + g2(b2, x2)))
+
+ = (
+   sum<sub>x1</sub> sum<sub>x2</sub> (
+    f1(x1) * f2(x2) * (c0 + g1(b1, x1)))
+   +
+   sum<sub>x1</sub> sum<sub>x2</sub> (
+    f1(x1) * f2(x2) * g2(b2, x2))
+   )
+
+ = (
+    sum<sub>x2</sub> f2(x2) * (
+    sum<sub>x1</sub>f1(x1) * (c0 + g1(b1, x1)))
+   +
+   sum<sub>x1</sub> f1(x1) * (
+     sum<sub>x2</sub> f2(x2) * g2(b2, x2))
+   )
+
+ = (
+   sum<sub>x2</sub> f2(x2) * C1
+   +
+   sum<sub>x1</sub> f1(x1) * C2
+   )
+   
+ = 0
+</pre>
+
+In both cases we are using that `sum<sub>xi</sub> f2(<sup>xi</sup>) 1 = 0`. We worked this derivation for the case where `x1` and `x2` are arbitrary categorical variables (by the general `gi(bi, xi)` notation). For a standard logsistic regression treating `x1` and `x2` is continuous variables we just substitute in `gi(bi, xi) := bi * xi` to specialize our demonstration.
+
+## Calculating the null space rank
+
+All the remains is to check that a the rank of the linear operator summing out (or marginalizing) a `u` by `v` by `2` 3-way contingency table has a null space with rank no larger than `(u - 1) * (v - 1)`. This finishes the problem as we can find `(u - 1) * (v - 1)` independent Kroenker product null vectors, and if these are all of the solution degrees of freedom then we know the maximum entropy solution is the original unobserved data distribution we wished to solve for.
+
+The above is just the number of degrees of freedom of a `u` by `v` by `2` contingency table with known margins. And is `(u - 1) * (v - 1) * (2 - 1)`, exactly as we need. The standard argument is: fill in a `(u - 1) * (v - 1) * (2 - 1)` sub-cube and the rest of the entries are then just linear functions of this partial fill in and the known marginal totals.
+
+
+
+
+
