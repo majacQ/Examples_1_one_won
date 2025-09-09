@@ -1,0 +1,6 @@
+
+
+$$
+f(x) = E  \; \frac{1}{2} \sum_{i} \sum_{j \neq i} \frac{1}{d(i, j)} + G \sum_{i} z(i)
+$$
+
